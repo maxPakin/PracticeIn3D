@@ -9,12 +9,21 @@
     mc:Ignorable="d"
     Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
 
-	<Grid Background="LightSkyBlue">
-		<local:MainPageViewport x:Name="Sandbox"/>
-		<TextBlock Name="DebugTextBlock"
-		           Text="DEBUG:"
-                   Width="300" TextWrapping="Wrap"
-		           FontSize="20" Foreground="Black"
-                   Margin="20" HorizontalAlignment="Left" VerticalAlignment="Top"/>
+	<Grid>
+		<Grid.RowDefinitions>
+			<RowDefinition Height="Auto"/>
+			<RowDefinition/>
+		</Grid.RowDefinitions>
+
+		<MenuBar Grid.Row="0" >
+			<MenuBarItem Title="File">
+				<MenuFlyoutItem Text="Open..." Click="MenuBar_File_Open_Click"/>
+			</MenuBarItem>
+		</MenuBar>
+
+		<Grid Row="1">
+			<local:MainPageViewport x:Name="Sandbox"/>
+		</Grid>
+		
 	</Grid>
 </Page>

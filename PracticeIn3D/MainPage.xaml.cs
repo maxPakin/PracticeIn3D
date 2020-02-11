@@ -5,7 +5,10 @@ using System.Linq;
 using System.Runtime.InteropServices.WindowsRuntime;
 using Windows.Foundation;
 using Windows.Foundation.Collections;
+using Windows.Storage;
+using Windows.Storage.Pickers;
 using Windows.UI;
+using Windows.UI.Popups;
 using Windows.UI.Xaml;
 using Windows.UI.Xaml.Controls;
 using Windows.UI.Xaml.Controls.Primitives;
@@ -14,7 +17,11 @@ using Windows.UI.Xaml.Input;
 using Windows.UI.Xaml.Media;
 using Windows.UI.Xaml.Navigation;
 using HelixToolkit.UWP;
-using SharpDX;
+using netDxf;
+using netDxf.Objects;
+using Newtonsoft.Json;
+using SharpDX.Direct3D11;
+using Vector3 = SharpDX.Vector3;
 
 // The Blank Page item template is documented at https://go.microsoft.com/fwlink/?LinkId=402352&clcid=0x409
 
@@ -70,6 +77,44 @@ namespace PracticeIn3D
 	            newDirection: cubeCenter - newPosition,
                 newUpDirection: Sandbox.Camera.UpDirection,
                 animationTime: TimeSpan.FromSeconds(10).TotalMilliseconds);
+        }
+
+        private async void MenuBar_File_Open_Click(object sender, RoutedEventArgs e)
+        {
+            // Create picker
+	        FileOpenPicker picker = new FileOpenPicker()
+	        {
+                CommitButtonText = "Open",
+                SuggestedStartLocation = PickerLocationId.Desktop,
+                ViewMode = PickerViewMode.Thumbnail
+	        };
+
+            // Create filter for picker
+            picker.FileTypeFilter.Add(".dxf");
+
+            // Pick a file and exit if file not picked
+            StorageFile file = await picker.PickSingleFileAsync();
+            if (file is null) return;
+
+            // Create stream to the file
+            using Stream stream = await file.OpenStreamForReadAsync();
+
+            // Load to the DxfDocument
+            DxfDocument document = DxfDocument.Load(stream);
+            if (document is null) return;
+
+            // Create Message Dialog
+            MessageDialog messageDialog = new MessageDialog(
+	            content: "Done")
+            {
+                DefaultCommandIndex = 0,
+                CancelCommandIndex = 0,
+                Commands = { new UICommand("Close") },
+                Options = MessageDialogOptions.AcceptUserInputAfterDelay
+            };
+
+            // Show Results
+            await messageDialog.ShowAsync();
         }
     }
 }

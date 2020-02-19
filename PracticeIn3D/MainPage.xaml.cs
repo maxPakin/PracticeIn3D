@@ -18,10 +18,20 @@ using Windows.UI.Xaml.Media;
 using Windows.UI.Xaml.Navigation;
 using HelixToolkit.UWP;
 using netDxf;
+using netDxf.Collections;
+using netDxf.Entities;
 using netDxf.Objects;
+using netDxf.Tables;
 using Newtonsoft.Json;
+using PracticeIn3D.Dialogs;
+using PracticeIn3D.Models;
 using SharpDX.Direct3D11;
-using Vector3 = SharpDX.Vector3;
+using Vector2 = System.Numerics.Vector2;
+using Vector3 = System.Numerics.Vector3;
+using Vector2_SharpDX = SharpDX.Vector2;
+using Vector3_SharpDX = SharpDX.Vector3;
+using Vector2_netDxf = netDxf.Vector2;
+using Vector3_netDxf = netDxf.Vector3;
 
 // The Blank Page item template is documented at https://go.microsoft.com/fwlink/?LinkId=402352&clcid=0x409
 
@@ -42,44 +52,41 @@ namespace PracticeIn3D
         {
             this.InitializeComponent();
 
-            // Create Light
-            var light = new PointLight3D
-            {
-                Color = Colors.White,
-                Position = new Vector3(4, 3, 3)
-            };
-
-            // Added Cube to Scene
-            Sandbox.Items.Add(light);
+            Sandbox.ShowCoordinateSystem = true;
 
             // Create Cube
             var meshBuilder = new MeshBuilder();
-            meshBuilder.AddCube();
+            meshBuilder.AddBox(
+	            center: Vector3_SharpDX.Zero,
+	            xlength: 10,
+	            ylength: 0.01f,
+	            zlength: 10);
             var cubeMesh = meshBuilder.ToMesh();
             var cube = new MeshGeometryModel3D
             {
 	            Geometry = cubeMesh,
-	            Material = PhongMaterials.Red
+	            Material = PhongMaterials.Gray
             };
 
             // Added Cube to Scene
             Sandbox.Items.Add(cube);
 
             // Starts Camera Movement
-            Vector3 cubeCenter = Vector3.Zero;
-            foreach (Vector3 cubeMeshPosition in cubeMesh.Positions)
+            Vector3_SharpDX cubeCenter = Vector3_SharpDX.Zero;
+            foreach (Vector3_SharpDX cubeMeshPosition in cubeMesh.Positions)
 	            cubeCenter += cubeMeshPosition;
             cubeCenter /= cubeMesh.Positions.Count;
 
-            var newPosition = new Vector3(5, 3, 4);
+            Vector3_SharpDX newPosition = new Vector3_SharpDX(5, 3, 4);
             Sandbox.Camera.AnimateTo(
 	            newPosition: newPosition, 
 	            newDirection: cubeCenter - newPosition,
                 newUpDirection: Sandbox.Camera.UpDirection,
                 animationTime: TimeSpan.FromSeconds(10).TotalMilliseconds);
+
         }
 
-        private async void MenuBar_File_Open_Click(object sender, RoutedEventArgs e)
+        private async void MenuBar_File_Open(object sender, RoutedEventArgs e)
         {
             // Create picker
 	        FileOpenPicker picker = new FileOpenPicker()
@@ -103,6 +110,14 @@ namespace PracticeIn3D
             DxfDocument document = DxfDocument.Load(stream);
             if (document is null) return;
 
+            IEnumerable<LayerModel> layerModels = document.CreateLayerModels();
+
+            // Ask user about layer
+            var chooseDialog = new ChooseLayerDialog(layerModels);
+            await chooseDialog.ShowAsync();
+            if (chooseDialog.Result == ChooseLayerDialogResult.Canceled) return;
+
+
             // Create Message Dialog
             MessageDialog messageDialog = new MessageDialog(
 	            content: "Done")
@@ -110,11 +125,28 @@ namespace PracticeIn3D
                 DefaultCommandIndex = 0,
                 CancelCommandIndex = 0,
                 Commands = { new UICommand("Close") },
-                Options = MessageDialogOptions.AcceptUserInputAfterDelay
             };
 
             // Show Results
             await messageDialog.ShowAsync();
+        }
+
+        private async void MenuBar_File_Debug(object sender, RoutedEventArgs e)
+        {
+	        using (MemoryStream stream = Sandbox.RenderToBitmapStream())
+	        {
+		        // Create Message Dialog
+		        MessageDialog messageDialog = new MessageDialog(
+			        content: (stream is null).ToString())
+		        {
+			        DefaultCommandIndex = 0,
+			        CancelCommandIndex = 0,
+			        Commands = { new UICommand("Close") },
+		        };
+
+		        // Show Results
+		        await messageDialog.ShowAsync();
+            }
         }
     }
 }

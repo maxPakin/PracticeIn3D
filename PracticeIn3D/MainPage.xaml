@@ -17,7 +17,8 @@
 
 		<MenuBar Grid.Row="0" >
 			<MenuBarItem Title="File">
-				<MenuFlyoutItem Text="Open..." Click="MenuBar_File_Open_Click"/>
+				<MenuFlyoutItem Text="Open..." Click="MenuBar_File_Open"/>
+				<MenuFlyoutItem Text="Debug" Click="MenuBar_File_Debug"/>
 			</MenuBarItem>
 		</MenuBar>
 
@@ -25,5 +26,6 @@
 			<local:MainPageViewport x:Name="Sandbox"/>
 		</Grid>
 		
+		<Image Grid.Row="1" Name="TestingImage"/>
 	</Grid>
 </Page>

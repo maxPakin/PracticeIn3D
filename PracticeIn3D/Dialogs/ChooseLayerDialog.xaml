@@ -1,0 +1,54 @@
+﻿<ContentDialog
+    x:Class="PracticeIn3D.Dialogs.ChooseLayerDialog"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:PracticeIn3D.Dialogs"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:generic="using:System.Collections.Generic"
+    xmlns:practiceIn3D="using:PracticeIn3D"
+    mc:Ignorable="d"
+    Title="Выберите слой"
+    DefaultButton="Primary"
+    PrimaryButtonText="Выбрать"
+    PrimaryButtonClick="Choose_ButtonClick"
+    CloseButtonText="Отмена"
+    CloseButtonClick="Close_ButtonClick"
+    d:DataContext="{d:DesignInstance local:ChooseLayerDialogViewModel}">
+
+	<Grid>
+		<ListView Name="ViewModelsListView"
+		          ItemsSource="{Binding LayersViewModels}" 
+		          SelectionChanged="ListView_SelectionChanged"
+		          SelectionMode="Single">
+			<ListView.ItemContainerStyle>
+				<Style TargetType="ListViewItem">
+					<Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+				</Style>
+			</ListView.ItemContainerStyle>
+			<ListView.ItemTemplate>
+                <DataTemplate>
+					<Grid Height="100" Margin="0 15">
+						<Grid.ColumnDefinitions>
+							<ColumnDefinition Width="Auto"/>
+							<ColumnDefinition Width="20"/>
+							<ColumnDefinition/>
+						</Grid.ColumnDefinitions>
+
+						<Border Grid.Column="0" Child="{Binding Viewport}" Width="100"/>
+						<Rectangle Grid.Column="1" Fill="LightGray" Width="2"/>
+						<RichTextBlock Grid.Column="2"
+						               IsHitTestVisible="False">
+							<Paragraph FontSize="21" Foreground="White">
+								<Run Text="{Binding Name}"/>
+							</Paragraph>
+							<Paragraph FontSize="17">
+								<Run Text="{Binding Description}" Foreground="LightGray"/>
+							</Paragraph>
+						</RichTextBlock>
+					</Grid>
+                </DataTemplate>
+			</ListView.ItemTemplate>
+		</ListView>
+	</Grid>
+</ContentDialog>

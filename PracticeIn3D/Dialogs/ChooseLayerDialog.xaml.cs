@@ -21,6 +21,7 @@ using Windows.UI.Xaml.Media.Imaging;
 using Windows.UI.Xaml.Navigation;
 using HelixToolkit.UWP;
 using PracticeIn3D.Models;
+using PracticeIn3D.Utilities;
 using SharpDX;
 using SharpDX.WIC;
 using Image = System.Drawing.Image;
@@ -43,6 +44,24 @@ namespace PracticeIn3D.Dialogs
 	}
 	public class LayerViewModel
 	{
+		public static LayerViewModel Create(LayerModel layerModel)
+		{
+			MeshGeometryModel3D newElement = GeometryHelper
+				.CreateGeometryFromLayerModel(layerModel.Polylines, App.WallHeight, PhongMaterials.Gray);
+			
+			MainPageViewport viewport = new MainPageViewport();
+			viewport.IsHitTestVisible = false;
+			viewport.Items.Add(newElement);
+			viewport.FocusCameraOn(newElement);
+
+			return new LayerViewModel
+			{
+				Name = layerModel.Name,
+				Description = $"Кол-во объектов: {layerModel.Polylines.Count}",
+				Viewport = viewport
+			};
+		}
+
 		public MainPageViewport Viewport { get; set; }
 		public string Name { get; set; }
 		public string Description { get; set; }
@@ -50,110 +69,25 @@ namespace PracticeIn3D.Dialogs
 
 	public class ChooseLayerDialogViewModel
 	{
-		private readonly ObservableCollection<LayerViewModel> _layersViewModels;
-		public ObservableCollection<LayerViewModel> LayersViewModels => _layersViewModels;
+		public ObservableCollection<LayerViewModel> LayersViewModels { get; }
 
-		public ChooseLayerDialogViewModel(IEnumerable<LayerModel> layers)
+		public ChooseLayerDialogViewModel(IEnumerable<LayerViewModel> layersViewModels)
 		{
-			_layersViewModels = new ObservableCollection<LayerViewModel>();
-			DisplayRealViewModels(_layersViewModels, layers.ToList());
-		}
-
-		private static void DisplayRealViewModels(
-			ObservableCollection<LayerViewModel> viewModelsList,
-			List<LayerModel> layers)
-		{
-			foreach (LayerModel layer in layers)
-			{
-				LayerViewModel viewModel = new LayerViewModel
-				{
-					Name = layer.Name,
-					Description = $"Кол-во объектов: {layer.Polylines.Count}",
-					Viewport = CreatePreview(layer)
-				};
-				viewModelsList.Add(viewModel);
-			}
-		}
-
-		private static MainPageViewport CreatePreview(LayerModel layer)
-		{
-			MeshBuilder builder = new MeshBuilder();
-			foreach (PolylineModel polyline in layer.Polylines)
-			{
-				if (polyline.Points.Count < 2) continue;
-
-				List<Vector3_SharpDX> downPolygon = new List<Vector3_SharpDX>();
-				List<Vector3_SharpDX> upperPolygon = new List<Vector3_SharpDX>();
-
-				downPolygon.Add(polyline.Points.First().TransformTo3DSharpDx(0));
-				upperPolygon.Add(polyline.Points.First().TransformTo3DSharpDx(App.WallHeight));
-				for (int i = 1; i < polyline.Points.Count; i++)
-				{
-					Vector3_SharpDX currentPoint = polyline.Points[i].TransformTo3DSharpDx(0);
-					Vector3_SharpDX currentUpperPoint = polyline.Points[i].TransformTo3DSharpDx(App.WallHeight);
-
-					builder.AddQuad(
-						downPolygon.Last(),
-						new Vector3_SharpDX(currentPoint.X, currentPoint.Y, currentPoint.Z),
-						new Vector3_SharpDX(currentUpperPoint.X, currentUpperPoint.Y, currentUpperPoint.Z),
-						upperPolygon.Last());
-
-					downPolygon.Add(currentPoint);
-					upperPolygon.Add(currentUpperPoint);
-				}
-
-				// Create cycle
-				builder.AddQuad(
-					downPolygon.Last(),
-					downPolygon.First(),
-					upperPolygon.First(),
-					upperPolygon.Last());
-
-				// Adding Upper Part
-				builder.AddTriangleFan(
-					fanPositions: upperPolygon, 
-					fanNormals: new List<Vector3_SharpDX> { Vector3_SharpDX.UnitY }, 
-					fanTextureCoordinates: new List<Vector2_SharpDX> { Vector2_SharpDX.UnitY } );
-
-				// Adding Down Upper
-				builder.AddTriangleFan(
-					fanPositions: downPolygon,
-					fanNormals: new List<Vector3_SharpDX> { -Vector3_SharpDX.UnitY },
-					fanTextureCoordinates: new List<Vector2_SharpDX> { -Vector2_SharpDX.UnitY });
-			}
-
-			MeshGeometry3D polyWall = builder.ToMesh();
-			BoundingSphere boundSphere = polyWall.BoundingSphere;
-
-			MainPageViewport viewport = new MainPageViewport();
-			viewport.Items.Add(new MeshGeometryModel3D()
-			{
-				Geometry = polyWall,
-				Material = PhongMaterials.Gray
-			});
-
-			Vector3_SharpDX newDirection = new Vector3_SharpDX(boundSphere.Radius, boundSphere.Radius, -boundSphere.Radius);
-			Vector3_SharpDX newPosition = boundSphere.Center + newDirection;
-			viewport.Camera.AnimateTo(
-				newPosition: newPosition,
-				newDirection: newDirection,
-				newUpDirection: viewport.Camera.UpDirection,
-				animationTime: TimeSpan.FromSeconds(10).TotalMilliseconds);
-
-			return viewport;
+			LayersViewModels = new ObservableCollection<LayerViewModel>(layersViewModels);
 		}
 	}
 
 	public sealed partial class ChooseLayerDialog : ContentDialog
 	{
 		public ChooseLayerDialogResult Result { get; private set; }
-		public string SelectedLayerName { get; private set; }
+		public List<string> SelectedLayers { get; private set; }
 
-		public ChooseLayerDialog(IEnumerable<LayerModel> layers)
+		public ChooseLayerDialog(IEnumerable<LayerViewModel> layersViewModels)
 		{
 			this.InitializeComponent();
 			
-			this.DataContext = new ChooseLayerDialogViewModel(layers);
+			this.SelectedLayers = new List<string>();
+			this.DataContext = new ChooseLayerDialogViewModel(layersViewModels);
 			this.ViewModelsListView.Loaded += (sender, args) =>
 				this.ViewModelsListView.SelectedItem = this.ViewModelsListView.Items?.First();
 		}
@@ -161,7 +95,11 @@ namespace PracticeIn3D.Dialogs
 		private void Choose_ButtonClick(ContentDialog sender, ContentDialogButtonClickEventArgs args)
 		{
 			Result = ChooseLayerDialogResult.Chosen;
-			SelectedLayerName = (this.ViewModelsListView.SelectedItem as LayerViewModel).Name;
+			SelectedLayers = this.ViewModelsListView.SelectedItems
+				.Where(x => x is LayerViewModel)
+				.Cast<LayerViewModel>()
+				.Select(x => x.Name)
+				.ToList();
 		}
 
 		private void Close_ButtonClick(ContentDialog sender, ContentDialogButtonClickEventArgs args)

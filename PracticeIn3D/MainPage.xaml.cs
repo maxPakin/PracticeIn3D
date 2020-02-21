@@ -25,6 +25,7 @@ using netDxf.Tables;
 using Newtonsoft.Json;
 using PracticeIn3D.Dialogs;
 using PracticeIn3D.Models;
+using PracticeIn3D.Utilities;
 using SharpDX.Direct3D11;
 using Vector2 = System.Numerics.Vector2;
 using Vector3 = System.Numerics.Vector3;
@@ -47,43 +48,70 @@ namespace PracticeIn3D
         // email 
         // Raspberry
 
+        public static TextBlock LastDebugTextBlock;
 
         public MainPage()
         {
             this.InitializeComponent();
 
+            Sandbox.AllowLeftRightRotation = true;
+            Sandbox.AllowUpDownRotation = true;
+            Sandbox.ShowCoordinateSystem = true;
             Sandbox.ShowCoordinateSystem = true;
 
-            // Create Cube
-            var meshBuilder = new MeshBuilder();
-            meshBuilder.AddBox(
-	            center: Vector3_SharpDX.Zero,
-	            xlength: 10,
-	            ylength: 0.01f,
-	            zlength: 10);
-            var cubeMesh = meshBuilder.ToMesh();
-            var cube = new MeshGeometryModel3D
-            {
-	            Geometry = cubeMesh,
-	            Material = PhongMaterials.Gray
-            };
+            LastDebugTextBlock = DebugTextBlock;
+        }
 
-            // Added Cube to Scene
-            Sandbox.Items.Add(cube);
+        private async void LoadFile(DxfDocument document)
+        {
+	        // Map to LayerModel
+	        List<LayerModel> layerModels = document
+		        .CreateLayerModels()
+		        .Where(x => x.Polylines.Any())
+		        .ToList();
 
-            // Starts Camera Movement
-            Vector3_SharpDX cubeCenter = Vector3_SharpDX.Zero;
-            foreach (Vector3_SharpDX cubeMeshPosition in cubeMesh.Positions)
-	            cubeCenter += cubeMeshPosition;
-            cubeCenter /= cubeMesh.Positions.Count;
+			// Bad scenario
+	        if (layerModels.Count < 1)
+	        {
+		        MessageDialog dialog = new MessageDialog(title: "Wrong file format...",
+			        content: "There are no suitable layers in the loading file.\n" +
+							 "See Help > Supported layers.");
+		        await dialog.ShowAsync();
+                return;
+	        }
 
-            Vector3_SharpDX newPosition = new Vector3_SharpDX(5, 3, 4);
-            Sandbox.Camera.AnimateTo(
-	            newPosition: newPosition, 
-	            newDirection: cubeCenter - newPosition,
-                newUpDirection: Sandbox.Camera.UpDirection,
-                animationTime: TimeSpan.FromSeconds(10).TotalMilliseconds);
+			// Good scenario
+			List<LayerModel> selectedLayers;
+			if (layerModels.Count < 2)
+			{
+				selectedLayers = new List<LayerModel> { layerModels.First() };
+			}
+	        else
+	        {
+				// Ask user about layer
+				var chooseDialog = new ChooseLayerDialog(layerModels
+					.Select(LayerViewModel.Create));
+				await chooseDialog.ShowAsync();
 
+				if (chooseDialog.Result == ChooseLayerDialogResult.Canceled) return;
+
+				// Loading to scene
+				selectedLayers = layerModels
+					.Where(x => chooseDialog.SelectedLayers.Contains(x.Name))
+					.ToList();
+			}
+
+			List<PolylineModel> polylines = selectedLayers
+				.SelectMany(x => x.Polylines)
+				.ToList();
+
+			MeshGeometryModel3D newElement = GeometryHelper
+		        .CreateGeometryFromLayerModel(polylines, App.WallHeight, PhongMaterials.Gray);
+
+			
+			Sandbox.ClearLoadedItems();
+			Sandbox.Items.Add(newElement);
+	        Sandbox.FocusCameraOn(newElement);
         }
 
         private async void MenuBar_File_Open(object sender, RoutedEventArgs e)
@@ -104,49 +132,60 @@ namespace PracticeIn3D
             if (file is null) return;
 
             // Create stream to the file
-            using Stream stream = await file.OpenStreamForReadAsync();
-
-            // Load to the DxfDocument
-            DxfDocument document = DxfDocument.Load(stream);
-            if (document is null) return;
-
-            IEnumerable<LayerModel> layerModels = document.CreateLayerModels();
-
-            // Ask user about layer
-            var chooseDialog = new ChooseLayerDialog(layerModels);
-            await chooseDialog.ShowAsync();
-            if (chooseDialog.Result == ChooseLayerDialogResult.Canceled) return;
-
-
-            // Create Message Dialog
-            MessageDialog messageDialog = new MessageDialog(
-	            content: "Done")
+            DxfDocument document;
+            using (Stream stream = await file.OpenStreamForReadAsync())
             {
-                DefaultCommandIndex = 0,
-                CancelCommandIndex = 0,
-                Commands = { new UICommand("Close") },
-            };
-
-            // Show Results
-            await messageDialog.ShowAsync();
-        }
-
-        private async void MenuBar_File_Debug(object sender, RoutedEventArgs e)
-        {
-	        using (MemoryStream stream = Sandbox.RenderToBitmapStream())
-	        {
-		        // Create Message Dialog
-		        MessageDialog messageDialog = new MessageDialog(
-			        content: (stream is null).ToString())
-		        {
-			        DefaultCommandIndex = 0,
-			        CancelCommandIndex = 0,
-			        Commands = { new UICommand("Close") },
-		        };
-
-		        // Show Results
-		        await messageDialog.ShowAsync();
+	            // Load to the DxfDocument
+	            document = DxfDocument.Load(stream);
+	            if (document is null) return;
             }
+
+            LoadFile(document);
         }
+
+        private async void MenuBar_File_OpenSample(object sender, RoutedEventArgs e)
+        {
+	        StorageFile storageFile = await StorageFile
+		        .GetFileFromApplicationUriAsync("Resources/Sample.dxf".CreateUriToResource());
+	        
+	        // Create stream to the file
+	        DxfDocument document;
+            using (Stream stream = await storageFile.OpenStreamForReadAsync())
+	        {
+		        // Load to the DxfDocument
+		        document = DxfDocument.Load(stream);
+		        if (document is null) return;
+            }
+
+            LoadFile(document);
+        }
+
+        private void MenuBar_Camera_LookTop(object sender, RoutedEventArgs e)
+        {
+	        Element3D first = Sandbox.Items
+		        .FirstOrDefault(x => x is MeshGeometryModel3D);
+	        if (first is null) return;
+
+	        Sandbox.FocusCameraOn(first, fromTop: true);
+        }
+
+        private void MenuBar_Camera_LookAround(object sender, RoutedEventArgs e)
+        {
+	        Element3D first = Sandbox.Items
+		        .FirstOrDefault(x => x is MeshGeometryModel3D);
+            if (first is null) return;
+
+            Sandbox.FocusCameraOn(first);
+        }
+
+        private async void MenuBar_Help_SupportedLayers(object sender, RoutedEventArgs e)
+        {
+			MessageDialog dialog = new MessageDialog(title: "Supported layers",
+				content: "> Only DXF files are used for download.\n" +
+						 "> The layers where the polylines are present will be selected from the file.\n" +
+						 "> Polylines can be closed or open (open will be closed automatically).\n" + 
+				         "> Please note that polylines should not have holes, as this has not yet been implemented.");
+			await dialog.ShowAsync();
+		}
     }
 }

@@ -20,7 +20,7 @@
 		<ListView Name="ViewModelsListView"
 		          ItemsSource="{Binding LayersViewModels}" 
 		          SelectionChanged="ListView_SelectionChanged"
-		          SelectionMode="Single">
+		          SelectionMode="Multiple">
 			<ListView.ItemContainerStyle>
 				<Style TargetType="ListViewItem">
 					<Setter Property="HorizontalContentAlignment" Value="Stretch"/>

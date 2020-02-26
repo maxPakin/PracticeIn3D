@@ -1,0 +1,27 @@
+﻿<ContentDialog
+    x:Class="PracticeIn3D.Dialogs.ConfigureSignalingDialog"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:PracticeIn3D.Dialogs"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:vIewModels="using:PracticeIn3D.VIewModels"
+    mc:Ignorable="d"
+    Title=""
+    DefaultButton="Primary"
+    PrimaryButtonText=""
+    PrimaryButtonClick="Add_ButtonClick"
+    CloseButtonText="Cancel"
+    CloseButtonClick="Close_ButtonClick"
+    d:DataContext="{d:DesignInstance vIewModels:SignalingViewModel}">
+
+	<StackPanel>
+		<TextBlock Text="Type:" Margin="0 0 0 10"/>
+		<ComboBox Name="TypeComboBox"  Margin="0 0 0 10"
+                  HorizontalAlignment="Stretch"
+		          SelectedItem="{Binding Type, Mode=TwoWay}"/>
+		<TextBlock Text="Name:"  Margin="0 0 0 10"/>
+		<TextBox Name="NameTextBox"  Margin="0 0 0 10"
+		          Text="{Binding Name, Mode=TwoWay}"/>
+	</StackPanel>
+</ContentDialog>

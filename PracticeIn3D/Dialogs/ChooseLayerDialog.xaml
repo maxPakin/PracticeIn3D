@@ -8,11 +8,11 @@
     xmlns:generic="using:System.Collections.Generic"
     xmlns:practiceIn3D="using:PracticeIn3D"
     mc:Ignorable="d"
-    Title="Выберите слой"
+    Title="Select layer"
     DefaultButton="Primary"
-    PrimaryButtonText="Выбрать"
+    PrimaryButtonText="Choose"
     PrimaryButtonClick="Choose_ButtonClick"
-    CloseButtonText="Отмена"
+    CloseButtonText="Cancel"
     CloseButtonClick="Close_ButtonClick"
     d:DataContext="{d:DesignInstance local:ChooseLayerDialogViewModel}">
 

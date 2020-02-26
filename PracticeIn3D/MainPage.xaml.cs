@@ -1,13 +1,18 @@
 ﻿using System;
+using System.Collections;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
+using System.Collections.Specialized;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices.WindowsRuntime;
+using Windows.Devices.Input;
 using Windows.Foundation;
 using Windows.Foundation.Collections;
 using Windows.Storage;
 using Windows.Storage.Pickers;
 using Windows.UI;
+using Windows.UI.Input;
 using Windows.UI.Popups;
 using Windows.UI.Xaml;
 using Windows.UI.Xaml.Controls;
@@ -18,14 +23,15 @@ using Windows.UI.Xaml.Media;
 using Windows.UI.Xaml.Navigation;
 using HelixToolkit.UWP;
 using netDxf;
-using netDxf.Collections;
 using netDxf.Entities;
 using netDxf.Objects;
 using netDxf.Tables;
 using Newtonsoft.Json;
 using PracticeIn3D.Dialogs;
+using PracticeIn3D.Enums;
 using PracticeIn3D.Models;
 using PracticeIn3D.Utilities;
+using PracticeIn3D.VIewModels;
 using SharpDX.Direct3D11;
 using Vector2 = System.Numerics.Vector2;
 using Vector3 = System.Numerics.Vector3;
@@ -38,40 +44,126 @@ using Vector3_netDxf = netDxf.Vector3;
 
 namespace PracticeIn3D
 {
+	public class MainPageViewModel
+	{
+		public float SavedCameraX { get; set; }
+		public float SavedCameraY { get; set; }
+		public float SavedCameraZ { get; set; }
+		public float SavedCameraRotatingX { get; set; }
+		public float SavedCameraRotatingY { get; set; }
+		public float SavedCameraRotatingZ { get; set; }
+		public ObservableCollection<SignalingViewModel> Signalings { get; set; }
+		public ObservableCollection<WallViewModel> Walls { get; set; }
+
+		public MainPageViewModel(
+			float savedCameraX, 
+			float savedCameraY, 
+			float savedCameraZ, 
+			float savedCameraRotatingX, 
+			float savedCameraRotatingY, 
+			float savedCameraRotatingZ,
+			IEnumerable<SignalingViewModel> signalings,
+			IEnumerable<WallViewModel> walls)
+		{
+			this.SavedCameraX = savedCameraX;
+			this.SavedCameraY = savedCameraY;
+			this.SavedCameraZ = savedCameraZ;
+			this.SavedCameraRotatingX = savedCameraRotatingX;
+			this.SavedCameraRotatingY = savedCameraRotatingY;
+			this.SavedCameraRotatingZ = savedCameraRotatingZ;
+			this.Signalings = new ObservableCollection<SignalingViewModel>(signalings);
+			this.Walls = new ObservableCollection<WallViewModel>(walls);
+		}
+
+		public MainPageViewModel()
+			: this(
+				savedCameraX: 10, 
+				savedCameraY: 10, 
+				savedCameraZ: 10, 
+				savedCameraRotatingX: -1, 
+				savedCameraRotatingY: -1, 
+				savedCameraRotatingZ: -1, 
+				signalings: Enumerable.Empty<SignalingViewModel>(), 
+				walls: Enumerable.Empty<WallViewModel>())
+		{
+
+		}
+
+
+	}
+
     /// <summary>
     /// An empty page that can be used on its own or navigated to within a Frame.
     /// </summary>
     public sealed partial class MainPage : Page
     {
+	    public MainPageViewModel ViewModel { get; set; }
 
-        // import .DXF format 
-        // email 
-        // Raspberry
-
-        public static TextBlock LastDebugTextBlock;
-
-        public MainPage()
+	    public MainPage()
         {
             this.InitializeComponent();
 
-            Sandbox.AllowLeftRightRotation = true;
-            Sandbox.AllowUpDownRotation = true;
-            Sandbox.ShowCoordinateSystem = true;
-            Sandbox.ShowCoordinateSystem = true;
+            MainPageViewModel viewModel = null ?? new MainPageViewModel();
+            Sandbox.Camera.Position = new Vector3_SharpDX(
+	            x: viewModel.SavedCameraX,
+	            y: viewModel.SavedCameraY,
+	            z: viewModel.SavedCameraZ);
+            Sandbox.Camera.LookDirection = new Vector3_SharpDX(
+	            x: viewModel.SavedCameraRotatingX,
+	            y: viewModel.SavedCameraRotatingY,
+	            z: viewModel.SavedCameraRotatingZ);
 
-            LastDebugTextBlock = DebugTextBlock;
-        }
+            Sandbox.ShowCoordinateSystem = true;
+            Sandbox.OnMouse3DDown += Sandbox_OnMouseDown;
+            Sandbox.Signalings = viewModel.Signalings;
+            Sandbox.Walls = viewModel.Walls;
 
-        private async void LoadFile(DxfDocument document)
+			this.ViewModel = viewModel;
+			this.DataContext = viewModel;
+		}
+
+
+
+	    private async void RequestAddSignaling(Vector3_SharpDX position)
+	    {
+		    ConfigureSignalingDialog dialog = new ConfigureSignalingDialog(
+			    isAdding: true,
+			    signaling: new SignalingViewModel(
+				    centerX: position.X,
+				    centerY: position.Y,
+				    centerZ: position.Z));;
+			await dialog.ShowAsync();
+
+			if (dialog.Result == ConfigureSignalingDialogResult.Canceled) return;
+
+			ViewModel.Signalings.Add(dialog.ViewModel);
+	    }
+
+		private void RequestAddCamera(Vector3_SharpDX position)
+		{
+
+		}
+
+		private async void LoadFile(DxfDocument document)
         {
 	        // Map to LayerModel
-	        List<LayerModel> layerModels = document
+	        List<LayerViewModel> validLayers = document
 		        .CreateLayerModels()
 		        .Where(x => x.Polylines.Any())
+		        .Select(x => new LayerViewModel()
+		        {
+					Name = x.Name,
+					Walls = new ObservableCollection<WallViewModel>(x.Polylines
+						.Select(y => new WallViewModel()
+						{
+							Height = App.WallHeight,
+							Points = y.Points
+						}))
+		        })
 		        .ToList();
 
 			// Bad scenario
-	        if (layerModels.Count < 1)
+	        if (validLayers.Count < 1)
 	        {
 		        MessageDialog dialog = new MessageDialog(title: "Wrong file format...",
 			        content: "There are no suitable layers in the loading file.\n" +
@@ -81,111 +173,149 @@ namespace PracticeIn3D
 	        }
 
 			// Good scenario
-			List<LayerModel> selectedLayers;
-			if (layerModels.Count < 2)
+			List<LayerViewModel> selectedLayers;
+			if (validLayers.Count < 2)
 			{
-				selectedLayers = new List<LayerModel> { layerModels.First() };
+				selectedLayers = new List<LayerViewModel> { validLayers.First() };
 			}
 	        else
 	        {
 				// Ask user about layer
-				var chooseDialog = new ChooseLayerDialog(layerModels
-					.Select(LayerViewModel.Create));
-				await chooseDialog.ShowAsync();
+				var dialog = new ChooseLayerDialog(validLayers
+					.Select(ChooseLayerViewModel.Create));
+				await dialog.ShowAsync();
 
-				if (chooseDialog.Result == ChooseLayerDialogResult.Canceled) return;
+				if (dialog.Result == ChooseLayerDialogResult.Canceled) return;
 
 				// Loading to scene
-				selectedLayers = layerModels
-					.Where(x => chooseDialog.SelectedLayers.Contains(x.Name))
-					.ToList();
-			}
+				selectedLayers = dialog.SelectedLayers;
+	        }
 
-			List<PolylineModel> polylines = selectedLayers
-				.SelectMany(x => x.Polylines)
+			List<WallViewModel> walls = selectedLayers
+				.SelectMany(x => x.Walls)
 				.ToList();
 
-			MeshGeometryModel3D newElement = GeometryHelper
-		        .CreateGeometryFromLayerModel(polylines, App.WallHeight, PhongMaterials.Gray);
+			ViewModel.Walls.Clear();
+			ViewModel.Signalings.Clear();
 
-			
-			Sandbox.ClearLoadedItems();
-			Sandbox.Items.Add(newElement);
-	        Sandbox.FocusCameraOn(newElement);
+			ViewModel.Walls.AddRange(walls);
+			Sandbox.FocusCameraOn(ViewModel.Walls.Bounds());
         }
 
-        private async void MenuBar_File_Open(object sender, RoutedEventArgs e)
-        {
-            // Create picker
-	        FileOpenPicker picker = new FileOpenPicker()
-	        {
-                CommitButtonText = "Open",
-                SuggestedStartLocation = PickerLocationId.Desktop,
-                ViewMode = PickerViewMode.Thumbnail
-	        };
+		#region MenuBar
+		#region File
+		private async void MenuBar_File_Open(object sender, RoutedEventArgs e)
+		{
+			// Create picker
+			FileOpenPicker picker = new FileOpenPicker()
+			{
+				CommitButtonText = "Open",
+				SuggestedStartLocation = PickerLocationId.Desktop,
+				ViewMode = PickerViewMode.Thumbnail
+			};
 
-            // Create filter for picker
-            picker.FileTypeFilter.Add(".dxf");
+			// Create filter for picker
+			picker.FileTypeFilter.Add(".dxf");
 
-            // Pick a file and exit if file not picked
-            StorageFile file = await picker.PickSingleFileAsync();
-            if (file is null) return;
+			// Pick a file and exit if file not picked
+			StorageFile file = await picker.PickSingleFileAsync();
+			if (file is null) return;
 
-            // Create stream to the file
-            DxfDocument document;
-            using (Stream stream = await file.OpenStreamForReadAsync())
-            {
-	            // Load to the DxfDocument
-	            document = DxfDocument.Load(stream);
-	            if (document is null) return;
-            }
+			// Create stream to the file
+			DxfDocument document;
+			using (Stream stream = await file.OpenStreamForReadAsync())
+			{
+				// Load to the DxfDocument
+				document = DxfDocument.Load(stream);
+				if (document is null) return;
+			}
 
-            LoadFile(document);
-        }
+			LoadFile(document);
+		}
 
-        private async void MenuBar_File_OpenSample(object sender, RoutedEventArgs e)
-        {
-	        StorageFile storageFile = await StorageFile
-		        .GetFileFromApplicationUriAsync("Resources/Sample.dxf".CreateUriToResource());
-	        
-	        // Create stream to the file
-	        DxfDocument document;
-            using (Stream stream = await storageFile.OpenStreamForReadAsync())
-	        {
-		        // Load to the DxfDocument
-		        document = DxfDocument.Load(stream);
-		        if (document is null) return;
-            }
+		private async void MenuBar_File_OpenSample(object sender, RoutedEventArgs e)
+		{
+			StorageFile storageFile = await StorageFile
+				.GetFileFromApplicationUriAsync("Resources/Sample.dxf".CreateUriToResource());
 
-            LoadFile(document);
-        }
+			// Create stream to the file
+			DxfDocument document;
+			using (Stream stream = await storageFile.OpenStreamForReadAsync())
+			{
+				// Load to the DxfDocument
+				document = DxfDocument.Load(stream);
+				if (document is null) return;
+			}
 
-        private void MenuBar_Camera_LookTop(object sender, RoutedEventArgs e)
-        {
-	        Element3D first = Sandbox.Items
-		        .FirstOrDefault(x => x is MeshGeometryModel3D);
-	        if (first is null) return;
+			LoadFile(document);
+		}
+		#endregion
+		#region Camera
+		private void MenuBar_Camera_LookTop(object sender, RoutedEventArgs e)
+		{
+			if (!Sandbox.Walls.Any()) return;
+			Sandbox.FocusCameraOn(ViewModel.Walls.Bounds(), fromTop: true);
+		}
 
-	        Sandbox.FocusCameraOn(first, fromTop: true);
-        }
-
-        private void MenuBar_Camera_LookAround(object sender, RoutedEventArgs e)
-        {
-	        Element3D first = Sandbox.Items
-		        .FirstOrDefault(x => x is MeshGeometryModel3D);
-            if (first is null) return;
-
-            Sandbox.FocusCameraOn(first);
-        }
-
-        private async void MenuBar_Help_SupportedLayers(object sender, RoutedEventArgs e)
-        {
+		private void MenuBar_Camera_LookAround(object sender, RoutedEventArgs e)
+		{
+			if (!Sandbox.Walls.Any()) return;
+			Sandbox.FocusCameraOn(ViewModel.Walls.Bounds());
+		}
+		#endregion
+		#region Help
+		private async void MenuBar_Help_SupportedLayers(object sender, RoutedEventArgs e)
+		{
 			MessageDialog dialog = new MessageDialog(title: "Supported layers",
 				content: "> Only DXF files are used for download.\n" +
-						 "> The layers where the polylines are present will be selected from the file.\n" +
-						 "> Polylines can be closed or open (open will be closed automatically).\n" + 
+				         "> The layers where the polylines are present will be selected from the file.\n" +
+				         "> Polylines can be closed or open (open will be closed automatically).\n" +
 				         "> Please note that polylines should not have holes, as this has not yet been implemented.");
 			await dialog.ShowAsync();
 		}
+		#endregion
+		#endregion
+
+		#region Flyout
+		private void Sandbox_OnMouseDown(object sender, MouseDown3DEventArgs e)
+		{
+			if (e.OriginalInputEventArgs.Pointer.PointerDeviceType != PointerDeviceType.Mouse) return;
+			PointerPointProperties properties = e.OriginalInputEventArgs.GetCurrentPoint(this).Properties;
+
+			if (properties.IsLeftButtonPressed)
+			{
+				// Left button pressed
+				// Ignore
+			}
+			else if (properties.IsRightButtonPressed)
+			{
+				// Right button pressed
+				if (e.HitTestResult is null) return;
+
+				CallFlyout(
+					targetElement: sender as UIElement, 
+					position: e.Position,
+					position3D: e.HitTestResult.PointHit);
+			}
+		}
+
+		private void CallFlyout(UIElement targetElement, Windows.Foundation.Point position, Vector3_SharpDX position3D)
+		{
+			MenuFlyoutItem signalingItem = new MenuFlyoutItem { Text = "Add signaling" };
+			signalingItem.Click += (a, b) => RequestAddSignaling(position3D);
+			MenuFlyoutItem cameraItem = new MenuFlyoutItem { Text = "Add camera", IsEnabled = false };
+			cameraItem.Click += (a, b) => RequestAddCamera(position3D);
+
+			MenuFlyout myFlyout = new MenuFlyout()
+			{
+				Items = {
+					signalingItem,
+					cameraItem
+				}
+			};
+
+			myFlyout.ShowAt(targetElement, position);
+		}
+		#endregion
     }
 }

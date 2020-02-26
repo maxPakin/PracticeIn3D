@@ -18,5 +18,123 @@
 ![image](https://user-images.githubusercontent.com/13965436/74277038-e5a3c500-4d27-11ea-9846-fc004f96c752.png)
 ![image](https://user-images.githubusercontent.com/13965436/74277168-18e65400-4d28-11ea-9211-5d0a5abf434b.png)  
 После загрузки я получил объект с кучей параметров. Надо будет разобраться с теми, которые нужны
+* **12.02.2020** - проверили возможность деплоя на *Raspberry PI*. Неудачно. После нескольких различных попыток решили поменять ноутбук.
+* **13.02.2020** - Из кучи параметров нам понадобится Layers, Polylines и LwPolylines. Различий между Polyline и LwPolyline - нет, только в размере хранения. Пробуем объединить эти две коллекции обьектов в одну, предварительно смапив их в абстракную модельку. Теперь мы можем забыть о DXF и использовать только нашу модельку, так как больше от DXF файла нам ничего не нужно
+* **14.02.2020** - Создал диалогово окно, чтобы выбрать слой, который будет загружен. Я отобразил название слоя и количество объектов в слое.  
+![image](https://user-images.githubusercontent.com/13965436/74911083-f52ca900-53cc-11ea-9f1c-f4660492360a.png)  
+Кстати о загруженном файле, я создал специально для тестирования файл с необходимыми кейсами: пустой слой, слой с замкнутыми полилиниями, слой с незамкнутыми полилиниями, слой с простыми линиями соответственно. Слой 0 удалить или переименовать нельзя :/
+* **15.02.2020** - Решил сразу поменять оси местами. Дело в том, что оси изначально расположены так, чтобы Y был вверх, а мне нужно, чтобы был Z. Также надо поменять местами X и Y, чтобы модельки не отрисовывались наоборот. Для этого повернём камеру набок:
+```
+Camera.UpDirection = Vector3.UnitZ
+```
+И включим этот параметр, чтобы поменять оси местами:
+```
+Camera.CreateLeftHandSystem = true
+```
+Теперь оси в удобном положении:  
+![image](https://user-images.githubusercontent.com/13965436/74911872-9ff19700-53ce-11ea-9561-b85542474470.png)  
+Также не хочется ставить кучу источников света, поэтому заставим двигаться какой-то постоянный источник вигаться за нами. Будем одновлять позицию света при каждой отрисовке. Для этого используем события OnRender у Viewport3DX:  
+```
+private void OnOnRendered(object sender, EventArgs e)
+{
+  _light.Position = Camera.Position;
+}
+```
+* **16.02.2020** - При выборе слоя добавил превью этого слоя, а также возможность выбрать несколько, так как могут быть слои "Стены" и "Перегородки", которые хочется объединить 
+![image](https://user-images.githubusercontent.com/13965436/75340042-bc944000-58a2-11ea-89cf-7e2c67dfa104.png)
+* **17.02.2020** - Запарился над управлением камерой. Дело в том, что я не смог найти ни одного способа удобно управлять камерой, поэтому придется запретить стандартное управление и написать своё. От вращения сразу отказываемся, так как в случае сенсорного экрана, будет сложно придумать жесты, да и писать это долго... Методом тыка нашёл необходимые параметры:  
+```
+this.AllowLeftRightRotation = false;
+this.AllowUpDownRotation = false;
+this.IsPanEnabled = false;
+```
+* **18.02.2020** - Для своего управления я использовал события. Для начала создадим методы для необходимых событий: 
+```
+this.OnMouse3DDown += Event_OnMouseDown;
+this.OnMouse3DMove += Event_OnMouseMove;
+this.OnMouse3DUp += Event_OnMouseUp;
+```
+Сначала создадим методы, вызываемые при нажатии мышки и при отжатии мышки - Event_OnMouseDown и Event_OnMouseUp:  
+```
+private Point? _lastMousePoint = null;
+private void Event_OnMouseDown(object sender, MouseDown3DEventArgs e)
+{
+  _lastMousePoint = e.Position;
+  e.OriginalInputEventArgs.Handled = true;
+}
+private void Event_OnMouseUp(object sender, MouseUp3DEventArgs e)
+{
+  _lastMousePoint = null;
+  e.OriginalInputEventArgs.Handled = true;
+}
+```
+Таким образом, мы можем определить была ли нажата клавиша мыши и где она нажата.
+Дальше написашем метод, вызываемый при сдвиге мышки - Event_OnMouseMove. Потребовалась математика и гугл...
+```
+private void Event_OnMouseMove(object sender, MouseMove3DEventArgs e)
+{
+  if (_lastMousePoint is null) return;
+  Point prevPoint = _lastMousePoint.Value;
+
+  double dx = e.Position.X - prevPoint.X;
+  double dy = e.Position.Y - prevPoint.Y;
+
+  Vector3_SharpDX lookDirection = Camera.LookDirection;
+  lookDirection.Normalize();
+
+  double horizontalMovementX = lookDirection.X * Math.Cos(Math.PI / 2) - lookDirection.Y * Math.Sin(Math.PI / 2);
+  double horizontalMovementY = lookDirection.X * Math.Sin(Math.PI / 2) + lookDirection.Y * Math.Cos(Math.PI / 2);
+
+  Camera.Position += new Vector3_SharpDX(
+    x: (float)(horizontalMovementX * dx * this.LeftRightPanSensitivity + lookDirection.X * dy),
+    y: (float)(horizontalMovementY * dx * this.LeftRightPanSensitivity + lookDirection.Y * dy),
+    z: 0);
+
+  _lastMousePoint = e.Position;
+
+  e.OriginalInputEventArgs.Handled = true;
+}
+```
+При таком написании кода камера будет двигаться по плоскости параллельной плоскости XY. Так как мы не отключали стандартный зум, то "высоту полета камеры" мы можем регулировать зумом.
+* **19.02.2020** - Добавил вкладку Camera и Help. В Camera можно изменить положение камеры. А именно вот так:  
+![image](https://user-images.githubusercontent.com/13965436/75341198-fbc39080-58a4-11ea-811c-9897533e4941.png)  
+И вот так:  
+![image](https://user-images.githubusercontent.com/13965436/75341256-21509a00-58a5-11ea-8d08-532d36dd5a71.png)  
+Эти два режима вполни удовлетворяют нужды пользователся.  
+В Help есть лишь указания по используемым файлам.  
+![image](https://user-images.githubusercontent.com/13965436/75341465-92904d00-58a5-11ea-9f2a-63c15d76c9c5.png)
+* **20.02.2020** - Перестроил большую часть кода на паттерн MVVM. Надо было сразу с него начинать
+* **21.02.2020** - Поменял пакет, который использовался в проекте. Было netDxf, стало netDxf.netstandart. Я изначально думал, что netDxf использует .Net.Standart, но оказывается у него есть отдельный пакет. О несовместимости мне сообщила студия
+* **25.02.2020** - Добавил возможность создания сигнализаций на макете. Пока могу показать только примерный вид:  
+![image](https://user-images.githubusercontent.com/13965436/75341869-5f9a8900-58a6-11ea-84ab-a822ae16261b.png)
+* **26.02.2020** - Базовая идея создания сигнализации готова. Дальше надо уточнять детали: какие параметры у сигнализации, что она умеет делать, как их размещать и тд. Пока сделано так:  
+Мы создаем макет в AutoCad:  
+![image](https://user-images.githubusercontent.com/13965436/75342202-fbc49000-58a6-11ea-911f-b63d29256a32.png)  
+Хочу заметить, что в файле несколько слоёв:  
+Перегородки - слой, на котором размещены перегородки как полилиниями, так и обычными линиями. Обычные линии будут игнорироваться  
+Листница - слой, на котором нет полилиний, поэтому весь слой будет убран из выбора  
+Окна - слой, аналогичный лестницам  
+СТЕНЫ - слой, где стены размещены обычными линиями  
+СТЕНЫ-полилинии - слой, где стены размещены полиниями. Этот слой создал я обычной обводкой слоя СТЕНЫ  
+Заходи в программу и выбираем File > Open...  
+![image](https://user-images.githubusercontent.com/13965436/75342497-9b821e00-58a7-11ea-9faf-5940dc73c254.png)  
+Выбираем наш файл:  
+![image](https://user-images.githubusercontent.com/13965436/75342597-c79d9f00-58a7-11ea-8d1a-5f27b6be86d4.png)  
+Надо заметить, что другие файлы мы выбрать не можем, только DXF  
+У нас уточняют, какой слой мы хотим загрузить  
+![image](https://user-images.githubusercontent.com/13965436/75342698-fc115b00-58a7-11ea-984f-c6f18cf23050.png)  
+Надо заметить, что если мы уберем галочки со всех слоёв, то кнопка Choose заблокируется  
+Выбираем оба и загружаем. Камера попытается встать так, чтобы стало видно всё, что было загружено.  
+![image](https://user-images.githubusercontent.com/13965436/75342854-498dc800-58a8-11ea-9933-348c41eb0a7c.png)  
+Мы можем приблизит камеру к какой-нибудь комнате и создать сигнализацию:  
+![image](https://user-images.githubusercontent.com/13965436/75342953-793cd000-58a8-11ea-8f7a-4e3edc278d8f.png)  
+Там есть выбор добавить камеру, но это не реальзовано, просто добавил на будущее.  
+Нас спросят про параметры сигнализации:  
+![image](https://user-images.githubusercontent.com/13965436/75342995-95407180-58a8-11ea-9ebd-e44f0cfd172a.png)  
+В типе можно выбрать Standard и Special, мы выберем Special. Имя пусть будет Моя первая сигнализация:  
+![image](https://user-images.githubusercontent.com/13965436/75343123-ce78e180-58a8-11ea-860e-1fb295731204.png)
+На макет в точке, где мы нажали, добавилась сигнализация:  
+![image](https://user-images.githubusercontent.com/13965436/75343185-f49e8180-58a8-11ea-80df-9c3ae4eecf27.png)  
+Если бы мы выбрали Standard сигнализацию, то шарик был бы красный. Больше отличий нет. Это лишь показывает, что данные, которые я выбираю реально влияют на исполнение.  
+На этом всё. Хотелось бы больше сделать, но из-за того, что я не знаком с AutoCAD и 3D графикой, это всё развивается медленно. Дальше нужно знать, что конкретно делает сигнализация и как её пользваться...
 ## Планы:
-* **12.02.2020** - проверить возможность деплоя на *Raspberry PI*

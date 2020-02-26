@@ -34,9 +34,15 @@ namespace PracticeIn3D
 			{
 				if (_signalings == value) return;
 				_signalings.CollectionChanged -= OnSignalingsCollectionChanged;
+				OnSignalingsCollectionChanged(null, new NotifyCollectionChangedEventArgs(
+					action: NotifyCollectionChangedAction.Remove,
+					changedItems: _signalings));
 
 				_signalings = value;
 				_signalings.CollectionChanged += OnSignalingsCollectionChanged;
+				OnSignalingsCollectionChanged(null, new NotifyCollectionChangedEventArgs(
+					action: NotifyCollectionChangedAction.Add,
+					changedItems: value));
 			}
 		}
 
@@ -48,9 +54,15 @@ namespace PracticeIn3D
 			{
 				if (_walls == value) return;
 				_walls.CollectionChanged -= OnWallsCollectionChanged;
+				OnWallsCollectionChanged(null, new NotifyCollectionChangedEventArgs(
+					action: NotifyCollectionChangedAction.Remove,
+					changedItems: _walls));
 
 				_walls = value;
 				_walls.CollectionChanged += OnWallsCollectionChanged;
+				OnWallsCollectionChanged(null, new NotifyCollectionChangedEventArgs(
+					action: NotifyCollectionChangedAction.Add,
+					changedItems: value));
 			}
 		}
 

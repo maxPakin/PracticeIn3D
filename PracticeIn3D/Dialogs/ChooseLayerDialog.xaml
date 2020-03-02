@@ -40,7 +40,7 @@
 						<RichTextBlock Grid.Column="2"
 						               IsHitTestVisible="False">
 							<Paragraph FontSize="21" Foreground="White">
-								<Run Text="{Binding Name}"/>
+								<Run Text="{Binding Layer.Name}"/>
 							</Paragraph>
 							<Paragraph FontSize="17">
 								<Run Text="{Binding Description}" Foreground="LightGray"/>
